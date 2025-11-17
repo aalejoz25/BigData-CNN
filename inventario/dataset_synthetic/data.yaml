@@ -1,0 +1,10 @@
+# Dataset Sintético - Inventario Salón de Cómputo
+# Generado automáticamente con múltiples objetos por imagen
+
+path: /run/media/SoporteOATI/HDD/Maestria/Repositorios/BigData-CNN/inventario/dataset_synthetic
+train: images/train
+val: images/val
+
+# Classes
+nc: 6
+names: ['cpu', 'mesa', 'mouse', 'pantalla', 'silla', 'teclado']

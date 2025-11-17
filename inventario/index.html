@@ -87,6 +87,13 @@
             transform: scale(0.95);
         }
 
+        .upload-btn:disabled {
+            background: linear-gradient(135deg, #999 0%, #666 100%);
+            cursor: not-allowed;
+            opacity: 0.6;
+            transform: none;
+        }
+
         .canvas-container {
             margin: 30px 0;
             text-align: center;
@@ -264,13 +271,13 @@
 
         <div class="upload-section">
             <div class="file-input-wrapper">
-                <label for="imageUpload" class="upload-btn">
+                <label for="imageUpload" class="upload-btn" id="uploadBtn">
                     📷 Seleccionar Imagen del Salón
                 </label>
-                <input type="file" id="imageUpload" accept="image/*">
+                <input type="file" id="imageUpload" accept="image/*" disabled>
             </div>
-            <p style="margin-top: 15px; color: #666;">
-                Sube una foto del salón de cómputo en formato .jpg, .jpeg o .png
+            <p style="margin-top: 15px; color: #666;" id="uploadHelp">
+                Esperando a que el modelo se cargue...
             </p>
         </div>
 
@@ -328,8 +335,18 @@
 
         // Cargar modelo ONNX al inicio
         async function loadModel() {
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadInput = document.getElementById('imageUpload');
+            const uploadHelp = document.getElementById('uploadHelp');
+            
             try {
-                showStatus('Cargando modelo YOLO...', 'info');
+                // Deshabilitar botón mientras carga
+                uploadBtn.style.pointerEvents = 'none';
+                uploadBtn.style.opacity = '0.6';
+                uploadBtn.style.background = 'linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%)';
+                uploadInput.disabled = true;
+                
+                showStatus('⏳ Cargando modelo...', 'info');
                 session = await ort.InferenceSession.create(MODEL_PATH);
                 
                 // Mostrar información del modelo
@@ -338,9 +355,20 @@
                 console.log('Output names:', session.outputNames);
                 
                 showStatus('✅ Modelo cargado. Listo para detectar objetos.', 'success');
+                
+                // Habilitar botón después de cargar
+                uploadBtn.style.pointerEvents = 'auto';
+                uploadBtn.style.opacity = '1';
+                uploadBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                uploadInput.disabled = false;
+                uploadHelp.textContent = 'Sube una foto del salón de cómputo en formato .jpg, .jpeg o .png';
+                
             } catch (error) {
                 showStatus('❌ Error al cargar el modelo: ' + error.message, 'error');
                 console.error('Error al cargar modelo:', error);
+                
+                // Mantener botón deshabilitado si falla la carga
+                uploadHelp.textContent = '❌ Error al cargar el modelo. Recarga la página.';
             }
         }
 
@@ -389,12 +417,23 @@
         }
 
         async function detectObjects(img) {
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadInput = document.getElementById('imageUpload');
+            const uploadHelp = document.getElementById('uploadHelp');
+            
             if (!session) {
                 showStatus('❌ Modelo no cargado', 'error');
                 return [];
             }
 
             try {
+                // Deshabilitar botón mientras procesa
+                uploadBtn.style.pointerEvents = 'none';
+                uploadBtn.style.opacity = '0.6';
+                uploadBtn.style.background = 'linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%)';
+                uploadInput.disabled = true;
+                uploadHelp.textContent = '⏳ Procesando imagen...';
+                
                 console.log('📸 Procesando imagen:', img.width, 'x', img.height);
                 
                 // Preparar imagen para el modelo
@@ -432,10 +471,19 @@
                 console.log('Detecciones por clase:', classCounts);
                 
                 return filteredDetections;
+                
             } catch (error) {
                 console.error('Error en detección:', error);
                 showStatus('❌ Error en detección: ' + error.message, 'error');
                 return [];
+                
+            } finally {
+                // Rehabilitar botón al finalizar (éxito o error)
+                uploadBtn.style.pointerEvents = 'auto';
+                uploadBtn.style.opacity = '1';
+                uploadBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                uploadInput.disabled = false;
+                uploadHelp.textContent = 'Sube una foto del salón de cómputo en formato .jpg, .jpeg o .png';
             }
         }
 

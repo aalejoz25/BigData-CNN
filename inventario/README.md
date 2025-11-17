@@ -2,6 +2,8 @@
 
 ### Inicio Rápido
 
+[🔗 Abrir enlace para ver web](https://aalejoz25.github.io/BigData-CNN/) 
+
 ```bash
 # 1. Abrir la aplicación web
 python3 -m http.server 8000

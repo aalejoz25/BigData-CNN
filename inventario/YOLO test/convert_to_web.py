@@ -38,50 +38,53 @@ def convert_model_to_web():
         print("\n📦 Cargando modelo...")
         model = YOLO(str(best_model_path))
         
-        # 1. Exportar a TFLite INT8 (para referencia)
-        print("\n1️⃣ Exportando a TFLite INT8 (optimizado)...")
-        tflite_int8_path = model.export(
-            format='tflite',
+        # 1. Exportar a ONNX (más compatible con web)
+        print("\n1️⃣ Exportando a ONNX (optimizado para web)...")
+        onnx_path = model.export(
+            format='onnx',
             imgsz=640,
-            int8=True,
-            data='yolo_dataset/data.yaml'
+            simplify=True,
+            opset=12
         )
-        print(f"   ✅ TFLite INT8: {tflite_int8_path}")
+        print(f"   ✅ ONNX: {onnx_path}")
         
         # Copiar a models/
-        tflite_dest = models_dir / "inventario_yolov8n_int8.tflite"
-        shutil.copy2(tflite_int8_path, tflite_dest)
-        print(f"   📁 Copiado a: {tflite_dest}")
+        onnx_dest = models_dir / "inventario_yolov8n.onnx"
+        shutil.copy2(onnx_path, onnx_dest)
+        print(f"   📁 Copiado a: {onnx_dest}")
         
-        # 2. Exportar a TensorFlow.js
-        print("\n2️⃣ Exportando a TensorFlow.js (para web)...")
-        tfjs_path = model.export(
-            format='tfjs',
-            imgsz=640
-        )
-        print(f"   ✅ TensorFlow.js: {tfjs_path}")
-        
-        # Copiar a models/tfjs_model/
-        tfjs_dest = models_dir / "tfjs_model"
-        if tfjs_dest.exists():
-            shutil.rmtree(tfjs_dest)
-        shutil.copytree(tfjs_path, tfjs_dest)
-        print(f"   📁 Copiado a: {tfjs_dest}")
-        
-        # 3. Copiar PyTorch model
-        print("\n3️⃣ Copiando modelo PyTorch...")
+        # 2. Copiar PyTorch model
+        print("\n2️⃣ Copiando modelo PyTorch...")
         pt_dest = models_dir / "inventario_yolov8n.pt"
         shutil.copy2(best_model_path, pt_dest)
         print(f"   ✅ PyTorch: {pt_dest}")
         
-        # 4. Crear archivo de labels
-        print("\n4️⃣ Creando archivo de labels...")
+        # 3. Crear archivo de labels
+        print("\n3️⃣ Creando archivo de labels...")
         labels_path = models_dir / "labels.txt"
         class_names = ['cpu', 'mesa', 'mouse', 'pantalla', 'silla', 'teclado']
         with open(labels_path, 'w') as f:
             for i, name in enumerate(class_names):
                 f.write(f"{i} {name}\n")
         print(f"   ✅ Labels: {labels_path}")
+        
+        # 4. Crear archivo de metadatos JSON para JavaScript
+        print("\n4️⃣ Creando metadata.json...")
+        import json
+        metadata = {
+            "model_name": "inventario_yolov8n",
+            "input_size": 640,
+            "classes": class_names,
+            "num_classes": len(class_names),
+            "format": "onnx",
+            "confidence_threshold": 0.25,
+            "iou_threshold": 0.45
+        }
+        metadata_path = models_dir / "model_metadata.json"
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        print(f"   ✅ Metadata: {metadata_path}")
+
         
         # Mostrar tamaños
         print("\n" + "="*60)
@@ -98,8 +101,7 @@ def convert_model_to_web():
         
         models = [
             ("PyTorch (.pt)", pt_dest),
-            ("TFLite INT8", tflite_dest),
-            ("TensorFlow.js", tfjs_dest),
+            ("ONNX", onnx_dest),
         ]
         
         for name, path in models:
@@ -116,10 +118,10 @@ def convert_model_to_web():
         print("   2. Sube una imagen del salón")
         print("   3. El sistema detectará objetos automáticamente")
         
-        print("\n💡 NOTA:")
-        print("   - El index.html actual funciona en MODO DEMO")
-        print("   - Para usar el modelo real, descomenta el código de carga en index.html")
-        print("   - Busca la sección 'initializeModel()' en el script")
+        print("\n💡 TECNOLOGÍA:")
+        print("   - Modelo ONNX cargado con ONNX Runtime Web")
+        print("   - Procesamiento 100% en el navegador")
+        print("   - Sin necesidad de servidor backend")
         
         return True
         
@@ -142,9 +144,9 @@ def verify_web_files():
     
     files_to_check = [
         ("index.html", "Aplicación web principal"),
-        ("models/tfjs_model/model.json", "Modelo TensorFlow.js"),
-        ("models/inventario_yolov8n_int8.tflite", "Modelo TFLite"),
+        ("models/inventario_yolov8n.onnx", "Modelo ONNX"),
         ("models/labels.txt", "Archivo de labels"),
+        ("models/model_metadata.json", "Metadata del modelo"),
     ]
     
     all_ok = True
@@ -214,12 +216,11 @@ if __name__ == "__main__":
         print("🎯 ¡TODO LISTO!")
         print("="*60)
         print("\nPuedes usar la aplicación web ahora.")
-        print("El modelo actual funciona en MODO DEMO.")
-        print("\nPara integrar el modelo real:")
-        print("1. Edita index.html")
-        print("2. Busca la función initializeModel()")
-        print("3. Descomenta el código de carga del modelo TFJS")
-        print("4. Implementa la función detectObjects() con el modelo real")
+        print("\n🌐 Para probar:")
+        print("   1. Ejecuta: bash start_server.sh")
+        print("   2. Abre: http://localhost:8000")
+        print("   3. Sube una imagen del salón de computación")
+        print("\n⚡ El modelo ONNX se ejecutará directamente en tu navegador")
         
     else:
         print("\n❌ La conversión falló")

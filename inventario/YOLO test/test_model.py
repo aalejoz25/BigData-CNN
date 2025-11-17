@@ -35,7 +35,9 @@ def test_model():
     model.info()
     
     # Buscar imágenes de prueba
-    test_images = list(Path(test_images_dir).glob("*.jpg"))
+    test_images = list(Path(test_images_dir).glob("*.jpeg"))
+    print(test_images)
+
     
     if not test_images:
         print(f"\n⚠️  No se encontraron imágenes de prueba en {test_images_dir}")

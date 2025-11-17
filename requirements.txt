@@ -1,7 +1,62 @@
-numpy
-pandas
-matplotlib
-seaborn
-opencv-python
-tensorflow
-scikit-learn
+# ==============================================================================
+# Requirements para Proyecto BigData-CNN
+# Álvaro Zarabanda - 20251595006
+# Fecha: 2025-11-17
+# ==============================================================================
+
+# ----------------------- Core Scientific Computing -------------------------
+numpy==2.2.6                    # Arrays y operaciones numéricas
+pandas==2.3.3                   # Análisis y manipulación de datos
+
+# ------------------------- Visualización ------------------------------------
+matplotlib==3.10.7              # Gráficos y visualización
+seaborn==0.13.2                 # Visualización estadística
+
+# ------------------------- Computer Vision ----------------------------------
+opencv-python==4.12.0           # Procesamiento de imágenes y video
+albumentations==2.0.8           # Data augmentation para imágenes
+
+# ------------------------- Deep Learning ------------------------------------
+# TensorFlow/Keras (para objetos-salon)
+tensorflow==2.20.0              # Framework deep learning (incluye Keras)
+
+# PyTorch (para YOLO)
+torch==2.9.1                    # Framework deep learning PyTorch
+torchvision>=0.20.1             # Utilidades de visión computacional para PyTorch
+
+# YOLO (para inventario)
+ultralytics==8.3.228            # YOLOv8 para detección de objetos
+
+# ------------------------- Machine Learning ---------------------------------
+scikit-learn==1.7.2             # Algoritmos ML y preprocesamiento
+
+# ------------------------- Utilidades ---------------------------------------
+tqdm==4.67.1                    # Barras de progreso
+Pillow>=11.0.0                  # Manipulación de imágenes (requerido por varios frameworks)
+
+# ------------------------- Exportación de Modelos ---------------------------
+onnx>=1.18.0                    # Formato de intercambio de modelos
+onnxruntime>=1.21.0             # Runtime para ejecutar modelos ONNX
+
+# ------------------------- Servidor Web (Opcional) --------------------------
+# http.server y socketserver son parte de stdlib Python, no requieren instalación
+
+# ==============================================================================
+# NOTAS DE INSTALACIÓN:
+# ==============================================================================
+# 
+# 1. Para instalar todas las dependencias:
+#    pip install -r requirements.txt
+#
+# 2. Si tienes GPU NVIDIA y quieres usar CUDA:
+#    - PyTorch se instaló con CUDA 12.8: torch==2.9.1+cu128
+#    - Para reinstalar con CUDA específica:
+#      pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+#
+# 3. Para CPU solamente (sin GPU):
+#    pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#
+# 4. Versiones de Python compatibles:
+#    Python >= 3.8, < 3.14
+#
+# ==============================================================================

@@ -310,8 +310,8 @@
         // Configuración
         const CLASSES = ['cpu', 'mesa', 'mouse', 'pantalla', 'silla', 'teclado'];
         const IMG_SIZE = 640;
-        const CONF_THRESHOLD = 0.3;
-        const IOU_THRESHOLD = 0.45;
+        const CONF_THRESHOLD = 0.15;  // Umbral de confianza (más bajo = más detecciones)
+        const IOU_THRESHOLD = 1.0;    // Umbral de NMS MUY alto (casi desactivado para objetos muy juntos)
         const MODEL_PATH = './runs/detect/inventario_synthetic2/weights/epoch100.onnx';
 
         let session = null;
@@ -331,8 +331,13 @@
             try {
                 showStatus('Cargando modelo YOLO...', 'info');
                 session = await ort.InferenceSession.create(MODEL_PATH);
+                
+                // Mostrar información del modelo
+                console.log('✅ Modelo ONNX cargado exitosamente');
+                console.log('Input names:', session.inputNames);
+                console.log('Output names:', session.outputNames);
+                
                 showStatus('✅ Modelo cargado. Listo para detectar objetos.', 'success');
-                console.log('Modelo ONNX cargado exitosamente');
             } catch (error) {
                 showStatus('❌ Error al cargar el modelo: ' + error.message, 'error');
                 console.error('Error al cargar modelo:', error);
@@ -390,22 +395,41 @@
             }
 
             try {
+                console.log('📸 Procesando imagen:', img.width, 'x', img.height);
+                
                 // Preparar imagen para el modelo
                 const [inputTensor, scaleFactor] = await preprocessImage(img);
+                console.log('✓ Imagen preprocesada, scaleFactor:', scaleFactor);
 
                 // Ejecutar inferencia
                 const feeds = {};
                 feeds[session.inputNames[0]] = inputTensor;
-                const outputData = await session.run(feeds);
                 
-                // Obtener resultados (YOLOv8 retorna formato [1, 6, 8400])
+                console.log('🔄 Ejecutando inferencia...');
+                const startTime = performance.now();
+                const outputData = await session.run(feeds);
+                const inferenceTime = performance.now() - startTime;
+                console.log(`✓ Inferencia completada en ${inferenceTime.toFixed(2)}ms`);
+                
+                // Obtener resultados
                 const output = outputData[session.outputNames[0]];
+                console.log('Output tensor shape:', output.dims);
+                console.log('Output tensor size:', output.data.length);
                 
                 // Procesar detecciones
                 const detections = processYOLOOutput(output, scaleFactor, img.width, img.height);
+                console.log(`✓ Detecciones brutas: ${detections.length}`);
                 
                 // Aplicar NMS (Non-Maximum Suppression)
                 const filteredDetections = applyNMS(detections, IOU_THRESHOLD);
+                console.log(`✓ Detecciones finales (después de NMS): ${filteredDetections.length}`);
+                
+                // Mostrar resumen por clase
+                const classCounts = {};
+                filteredDetections.forEach(det => {
+                    classCounts[det.class_id] = (classCounts[det.class_id] || 0) + 1;
+                });
+                console.log('Detecciones por clase:', classCounts);
                 
                 return filteredDetections;
             } catch (error) {
@@ -454,28 +478,46 @@
         function processYOLOOutput(output, scaleFactor, originalWidth, originalHeight) {
             const detections = [];
             const data = output.data;
-            const dims = output.dims; // [1, 10, 8400]
+            const dims = output.dims; // YOLOv8: [1, 4+num_classes, 8400]
             
-            const numFeatures = dims[1]; // 10 = 4 coords + 6 classes
+            console.log('Output shape:', dims);
+            
+            const numFeatures = dims[1]; // Ejemplo: 10 para 6 clases (4 coords + 6)
             const numBoxes = dims[2]; // 8400
             const numClasses = numFeatures - 4; // 6 clases
             
-            // Formato YOLOv8 ONNX: [batch, features, boxes]
-            // features = [x_center, y_center, width, height, class0_prob, class1_prob, ..., class5_prob]
+            console.log(`Processing: ${numBoxes} boxes, ${numClasses} classes`);
             
+            // YOLOv8 ONNX formato: [batch, features, boxes]
+            // Cada box tiene: [x_center, y_center, width, height, class0_conf, class1_conf, ..., class5_conf]
+            // Las coordenadas están en píxeles del espacio 640x640
+            
+            // Transponer: convertir de [1, features, boxes] a [boxes, features]
+            const boxes = [];
             for (let i = 0; i < numBoxes; i++) {
-                // Leer coordenadas (formato: x_center, y_center, width, height en píxeles de 640x640)
-                const xCenter = data[0 * numBoxes + i];
-                const yCenter = data[1 * numBoxes + i];
-                const width = data[2 * numBoxes + i];
-                const height = data[3 * numBoxes + i];
+                const box = [];
+                for (let j = 0; j < numFeatures; j++) {
+                    box.push(data[j * numBoxes + i]);
+                }
+                boxes.push(box);
+            }
+            
+            // Procesar cada box
+            for (let i = 0; i < boxes.length; i++) {
+                const box = boxes[i];
                 
-                // Encontrar clase con mayor probabilidad
+                // Coordenadas (en píxeles 0-640)
+                const xCenter = box[0];
+                const yCenter = box[1];
+                const width = box[2];
+                const height = box[3];
+                
+                // Encontrar clase con mayor confianza
                 let maxProb = 0;
                 let maxClass = 0;
                 
                 for (let c = 0; c < numClasses; c++) {
-                    const prob = data[(4 + c) * numBoxes + i];
+                    const prob = box[4 + c];
                     if (prob > maxProb) {
                         maxProb = prob;
                         maxClass = c;
@@ -485,18 +527,37 @@
                 // Filtrar por umbral de confianza
                 if (maxProb < CONF_THRESHOLD) continue;
                 
-                // Convertir de (x_center, y_center, w, h) a (x1, y1, x2, y2)
-                const x1_scaled = xCenter - width / 2;
-                const y1_scaled = yCenter - height / 2;
-                const x2_scaled = xCenter + width / 2;
-                const y2_scaled = yCenter + height / 2;
+                // DEBUG: Mostrar las primeras 5 detecciones válidas
+                if (detections.length < 5) {
+                    console.log(`  Box ${i}: class=${maxClass} (${CLASSES[maxClass]}), conf=${maxProb.toFixed(3)}, center=[${xCenter.toFixed(0)}, ${yCenter.toFixed(0)}], size=[${width.toFixed(0)}x${height.toFixed(0)}]`);
+                }
                 
-                // Escalar a coordenadas originales de la imagen
-                // Las coordenadas están en el espacio de 640x640, necesitamos convertir a la imagen original
-                const x1 = (x1_scaled / IMG_SIZE) * originalWidth;
-                const y1 = (y1_scaled / IMG_SIZE) * originalHeight;
-                const x2 = (x2_scaled / IMG_SIZE) * originalWidth;
-                const y2 = (y2_scaled / IMG_SIZE) * originalHeight;
+                // Convertir coordenadas del centro a esquinas (en espacio 640x640)
+                const x1_model = xCenter - width / 2;
+                const y1_model = yCenter - height / 2;
+                const x2_model = xCenter + width / 2;
+                const y2_model = yCenter + height / 2;
+                
+                // Escalar a coordenadas de la imagen original
+                // scaleFactor = IMG_SIZE / max(originalWidth, originalHeight)
+                const scale = Math.max(originalWidth, originalHeight) / IMG_SIZE;
+                
+                // Calcular offset del padding
+                const scaledWidth = originalWidth / scale;
+                const scaledHeight = originalHeight / scale;
+                const offsetX = (IMG_SIZE - scaledWidth) / 2;
+                const offsetY = (IMG_SIZE - scaledHeight) / 2;
+                
+                // Remover padding y escalar
+                const x1 = (x1_model - offsetX) * scale;
+                const y1 = (y1_model - offsetY) * scale;
+                const x2 = (x2_model - offsetX) * scale;
+                const y2 = (y2_model - offsetY) * scale;
+                
+                // Validar que las coordenadas estén dentro de la imagen
+                if (x2 <= 0 || y2 <= 0 || x1 >= originalWidth || y1 >= originalHeight) {
+                    continue; // Box fuera de la imagen
+                }
                 
                 detections.push({
                     class_id: maxClass,
@@ -508,12 +569,21 @@
                 });
             }
             
+            console.log(`Found ${detections.length} detections after filtering`);
             return detections;
         }
 
         function applyNMS(detections, iouThreshold) {
             // Ordenar por confianza descendente
             detections.sort((a, b) => b.confidence - a.confidence);
+            
+            console.log(`🔍 NMS: ${detections.length} detecciones antes de filtrar`);
+            if (detections.length > 0) {
+                console.log(`  Top 3 detecciones por confianza:`);
+                detections.slice(0, 3).forEach((det, i) => {
+                    console.log(`    ${i+1}. class=${det.class_id} (${CLASSES[det.class_id]}), conf=${det.confidence.toFixed(3)}`);
+                });
+            }
             
             const keep = [];
             const suppressed = new Set();
@@ -531,10 +601,13 @@
                         const iou = calculateIoU(detections[i], detections[j]);
                         if (iou > iouThreshold) {
                             suppressed.add(j);
+                            console.log(`  ⚠️ NMS eliminó: class=${detections[j].class_id} (${CLASSES[detections[j].class_id]}), conf=${detections[j].confidence.toFixed(3)}, IoU=${iou.toFixed(3)} con detección #${i+1}`);
                         }
                     }
                 }
             }
+            
+            console.log(`✅ NMS resultó en ${keep.length} detecciones (eliminadas: ${suppressed.size})`);
             
             return keep;
         }
@@ -561,17 +634,33 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(img, 0, 0);
 
+                console.log(`🎨 Dibujando ${detections.length} detecciones en canvas (${canvas.width}x${canvas.height})`);
+
                 // Dibujar cada detección
-                detections.forEach(det => {
+                detections.forEach((det, idx) => {
+                    const boxWidth = det.x2 - det.x1;
+                    const boxHeight = det.y2 - det.y1;
+                    
+                    console.log(`  Box ${idx+1}: [${det.x1.toFixed(0)}, ${det.y1.toFixed(0)}, ${det.x2.toFixed(0)}, ${det.y2.toFixed(0)}] = ${boxWidth.toFixed(0)}x${boxHeight.toFixed(0)}px`);
+                    
                     // Dibujar caja AZUL según requisitos
                     ctx.strokeStyle = 'blue';
                     ctx.lineWidth = 3;
-                    ctx.strokeRect(det.x1, det.y1, det.x2 - det.x1, det.y2 - det.y1);
+                    ctx.strokeRect(det.x1, det.y1, boxWidth, boxHeight);
 
-                    // Dibujar número de clase (ID)
+                    // Dibujar fondo para el texto
                     ctx.fillStyle = 'blue';
-                    ctx.font = 'bold 24px Arial';
-                    ctx.fillText(det.class_id.toString(), det.x1 + 5, det.y1 + 25);
+                    ctx.fillRect(det.x1, det.y1 - 30, 50, 30);
+                    
+                    // Dibujar número de clase (ID) en blanco sobre fondo azul
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 20px Arial';
+                    ctx.fillText(det.class_id.toString(), det.x1 + 5, det.y1 - 8);
+                    
+                    // Dibujar confianza
+                    ctx.fillStyle = 'blue';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.fillText(`${(det.confidence * 100).toFixed(0)}%`, det.x1 + 5, det.y2 - 5);
                 });
             };
             img.src = canvas.toDataURL();

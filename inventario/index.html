@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario Automático - Salón de Cómputo</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/ort.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .upload-section {
+            text-align: center;
+            margin: 30px 0;
+            padding: 40px;
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            background: #f8f9ff;
+            transition: all 0.3s;
+        }
+
+        .upload-section:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .upload-btn {
+            display: inline-block;
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: bold;
+            transition: transform 0.2s;
+            border: none;
+        }
+
+        .upload-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .upload-btn:active {
+            transform: scale(0.95);
+        }
+
+        .canvas-container {
+            margin: 30px 0;
+            text-align: center;
+            display: none;
+        }
+
+        #canvas {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+
+        .results-section {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .results-title {
+            font-size: 1.5em;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .results-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-size: 1.1em;
+        }
+
+        .results-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .results-table tr:hover {
+            background: #f8f9ff;
+        }
+
+        .count-badge {
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .total-row {
+            background: #f0f2ff !important;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: bold;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .class-legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .class-item {
+            padding: 10px;
+            border-radius: 8px;
+            background: #f8f9ff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .class-id {
+            background: #667eea;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Inventario</h1>
+        <p class="subtitle">Sistema de detección y conteo de objetos del salón de cómputo</p>
+
+        <div class="class-legend">
+            <div class="class-item">
+                <span class="class-id">0</span>
+                <span>CPU</span>
+            </div>
+            <div class="class-item">
+                <span class="class-id">1</span>
+                <span>Mesa</span>
+            </div>
+            <div class="class-item">
+                <span class="class-id">2</span>
+                <span>Mouse</span>
+            </div>
+            <div class="class-item">
+                <span class="class-id">3</span>
+                <span>Pantalla</span>
+            </div>
+            <div class="class-item">
+                <span class="class-id">4</span>
+                <span>Silla</span>
+            </div>
+            <div class="class-item">
+                <span class="class-id">5</span>
+                <span>Teclado</span>
+            </div>
+        </div>
+
+        <div class="upload-section">
+            <div class="file-input-wrapper">
+                <label for="imageUpload" class="upload-btn">
+                    📷 Seleccionar Imagen del Salón
+                </label>
+                <input type="file" id="imageUpload" accept="image/*">
+            </div>
+            <p style="margin-top: 15px; color: #666;">
+                Sube una foto del salón de cómputo en formato .jpg, .jpeg o .png
+            </p>
+        </div>
+
+        <div class="status" id="status"></div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Procesando imagen y detectando objetos...</p>
+        </div>
+
+        <div class="canvas-container" id="canvasContainer">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="results-section" id="resultsSection">
+            <h2 class="results-title">📊 Resultados del Conteo</h2>
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Objeto</th>
+                        <th>Cantidad</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>Álvaro Zarabanda - 20251595006</p>
+            <p>Proyecto CNN - Big Data 2025-3</p>
+        </div>
+    </div>
+
+    <script>
+        // Configuración
+        const CLASSES = ['cpu', 'mesa', 'mouse', 'pantalla', 'silla', 'teclado'];
+        const IMG_SIZE = 640;
+        const CONF_THRESHOLD = 0.3;
+        const IOU_THRESHOLD = 0.45;
+        const MODEL_PATH = './runs/detect/inventario/weights/best.onnx';
+
+        let session = null;
+
+        // Elementos DOM
+        const imageUpload = document.getElementById('imageUpload');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultsBody = document.getElementById('resultsBody');
+        const loading = document.getElementById('loading');
+        const status = document.getElementById('status');
+
+        // Cargar modelo ONNX al inicio
+        async function loadModel() {
+            try {
+                showStatus('Cargando modelo YOLO...', 'info');
+                session = await ort.InferenceSession.create(MODEL_PATH);
+                showStatus('✅ Modelo cargado. Listo para detectar objetos.', 'success');
+                console.log('Modelo ONNX cargado exitosamente');
+            } catch (error) {
+                showStatus('❌ Error al cargar el modelo: ' + error.message, 'error');
+                console.error('Error al cargar modelo:', error);
+            }
+        }
+
+        // Event listener para carga de imagen
+        imageUpload.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showStatus('Cargando imagen...', 'info');
+            
+            const img = new Image();
+            img.onload = async () => {
+                await processImage(img);
+            };
+            img.src = URL.createObjectURL(file);
+        });
+
+        async function processImage(img) {
+            // Mostrar loading
+            loading.style.display = 'block';
+            canvasContainer.style.display = 'none';
+            resultsSection.style.display = 'none';
+
+            // Configurar canvas
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+
+            // TODO: Implementar detección con modelo YOLO/TFLite
+            // Por ahora, mostramos un ejemplo de detección simulada
+            
+            // Simulación de detecciones (REEMPLAZAR CON MODELO REAL)
+            const detections = await detectObjects(img);
+
+            // Dibujar detecciones
+            drawDetections(detections);
+
+            // Mostrar resultados
+            displayResults(detections);
+
+            // Mostrar canvas
+            loading.style.display = 'none';
+            canvasContainer.style.display = 'block';
+            resultsSection.style.display = 'block';
+            showStatus('✅ Detección completada exitosamente', 'success');
+        }
+
+        async function detectObjects(img) {
+            if (!session) {
+                showStatus('❌ Modelo no cargado', 'error');
+                return [];
+            }
+
+            try {
+                // Preparar imagen para el modelo
+                const [inputTensor, scaleFactor] = await preprocessImage(img);
+
+                // Ejecutar inferencia
+                const feeds = {};
+                feeds[session.inputNames[0]] = inputTensor;
+                const outputData = await session.run(feeds);
+                
+                // Obtener resultados (YOLOv8 retorna formato [1, 6, 8400])
+                const output = outputData[session.outputNames[0]];
+                
+                // Procesar detecciones
+                const detections = processYOLOOutput(output, scaleFactor, img.width, img.height);
+                
+                // Aplicar NMS (Non-Maximum Suppression)
+                const filteredDetections = applyNMS(detections, IOU_THRESHOLD);
+                
+                return filteredDetections;
+            } catch (error) {
+                console.error('Error en detección:', error);
+                showStatus('❌ Error en detección: ' + error.message, 'error');
+                return [];
+            }
+        }
+
+        function preprocessImage(img) {
+            // Crear canvas temporal para redimensionar
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = IMG_SIZE;
+            tempCanvas.height = IMG_SIZE;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // Calcular factor de escala
+            const scaleFactor = IMG_SIZE / Math.max(img.width, img.height);
+            const scaledWidth = img.width * scaleFactor;
+            const scaledHeight = img.height * scaleFactor;
+            
+            // Dibujar imagen redimensionada (centrada con padding)
+            const offsetX = (IMG_SIZE - scaledWidth) / 2;
+            const offsetY = (IMG_SIZE - scaledHeight) / 2;
+            tempCtx.fillStyle = '#808080'; // Padding gris
+            tempCtx.fillRect(0, 0, IMG_SIZE, IMG_SIZE);
+            tempCtx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+            
+            // Obtener datos de píxeles
+            const imageData = tempCtx.getImageData(0, 0, IMG_SIZE, IMG_SIZE);
+            const pixels = imageData.data;
+            
+            // Convertir a tensor [1, 3, 640, 640] normalizado (0-1)
+            const inputArray = new Float32Array(1 * 3 * IMG_SIZE * IMG_SIZE);
+            
+            for (let i = 0; i < IMG_SIZE * IMG_SIZE; i++) {
+                inputArray[i] = pixels[i * 4] / 255.0; // R
+                inputArray[IMG_SIZE * IMG_SIZE + i] = pixels[i * 4 + 1] / 255.0; // G
+                inputArray[IMG_SIZE * IMG_SIZE * 2 + i] = pixels[i * 4 + 2] / 255.0; // B
+            }
+            
+            const tensor = new ort.Tensor('float32', inputArray, [1, 3, IMG_SIZE, IMG_SIZE]);
+            return [tensor, scaleFactor];
+        }
+
+        function processYOLOOutput(output, scaleFactor, originalWidth, originalHeight) {
+            const detections = [];
+            const data = output.data;
+            const dims = output.dims; // [1, 10, 8400]
+            
+            const numFeatures = dims[1]; // 10 = 4 coords + 6 classes
+            const numBoxes = dims[2]; // 8400
+            const numClasses = numFeatures - 4; // 6 clases
+            
+            // Formato YOLOv8 ONNX: [batch, features, boxes]
+            // features = [x_center, y_center, width, height, class0_prob, class1_prob, ..., class5_prob]
+            
+            for (let i = 0; i < numBoxes; i++) {
+                // Leer coordenadas (formato: x_center, y_center, width, height en píxeles de 640x640)
+                const xCenter = data[0 * numBoxes + i];
+                const yCenter = data[1 * numBoxes + i];
+                const width = data[2 * numBoxes + i];
+                const height = data[3 * numBoxes + i];
+                
+                // Encontrar clase con mayor probabilidad
+                let maxProb = 0;
+                let maxClass = 0;
+                
+                for (let c = 0; c < numClasses; c++) {
+                    const prob = data[(4 + c) * numBoxes + i];
+                    if (prob > maxProb) {
+                        maxProb = prob;
+                        maxClass = c;
+                    }
+                }
+                
+                // Filtrar por umbral de confianza
+                if (maxProb < CONF_THRESHOLD) continue;
+                
+                // Convertir de (x_center, y_center, w, h) a (x1, y1, x2, y2)
+                const x1_scaled = xCenter - width / 2;
+                const y1_scaled = yCenter - height / 2;
+                const x2_scaled = xCenter + width / 2;
+                const y2_scaled = yCenter + height / 2;
+                
+                // Escalar a coordenadas originales de la imagen
+                // Las coordenadas están en el espacio de 640x640, necesitamos convertir a la imagen original
+                const x1 = (x1_scaled / IMG_SIZE) * originalWidth;
+                const y1 = (y1_scaled / IMG_SIZE) * originalHeight;
+                const x2 = (x2_scaled / IMG_SIZE) * originalWidth;
+                const y2 = (y2_scaled / IMG_SIZE) * originalHeight;
+                
+                detections.push({
+                    class_id: maxClass,
+                    confidence: maxProb,
+                    x1: Math.max(0, x1),
+                    y1: Math.max(0, y1),
+                    x2: Math.min(originalWidth, x2),
+                    y2: Math.min(originalHeight, y2)
+                });
+            }
+            
+            return detections;
+        }
+
+        function applyNMS(detections, iouThreshold) {
+            // Ordenar por confianza descendente
+            detections.sort((a, b) => b.confidence - a.confidence);
+            
+            const keep = [];
+            const suppressed = new Set();
+            
+            for (let i = 0; i < detections.length; i++) {
+                if (suppressed.has(i)) continue;
+                
+                keep.push(detections[i]);
+                
+                for (let j = i + 1; j < detections.length; j++) {
+                    if (suppressed.has(j)) continue;
+                    
+                    // Si son de la misma clase y el IoU es alto, suprimir
+                    if (detections[i].class_id === detections[j].class_id) {
+                        const iou = calculateIoU(detections[i], detections[j]);
+                        if (iou > iouThreshold) {
+                            suppressed.add(j);
+                        }
+                    }
+                }
+            }
+            
+            return keep;
+        }
+
+        function calculateIoU(det1, det2) {
+            // Calcular Intersection over Union
+            const x1 = Math.max(det1.x1, det2.x1);
+            const y1 = Math.max(det1.y1, det2.y1);
+            const x2 = Math.min(det1.x2, det2.x2);
+            const y2 = Math.min(det1.y2, det2.y2);
+            
+            const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+            const area1 = (det1.x2 - det1.x1) * (det1.y2 - det1.y1);
+            const area2 = (det2.x2 - det2.x1) * (det2.y2 - det2.y1);
+            const union = area1 + area2 - intersection;
+            
+            return intersection / union;
+        }
+
+        function drawDetections(detections) {
+            // Redibujar imagen original
+            const img = new Image();
+            img.onload = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+
+                // Dibujar cada detección
+                detections.forEach(det => {
+                    // Dibujar caja AZUL según requisitos
+                    ctx.strokeStyle = 'blue';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(det.x1, det.y1, det.x2 - det.x1, det.y2 - det.y1);
+
+                    // Dibujar número de clase (ID)
+                    ctx.fillStyle = 'blue';
+                    ctx.font = 'bold 24px Arial';
+                    ctx.fillText(det.class_id.toString(), det.x1 + 5, det.y1 + 25);
+                });
+            };
+            img.src = canvas.toDataURL();
+        }
+
+        function displayResults(detections) {
+            // Contar objetos por clase
+            const counts = CLASSES.reduce((acc, _, idx) => {
+                acc[idx] = 0;
+                return acc;
+            }, {});
+
+            detections.forEach(det => {
+                counts[det.class_id]++;
+            });
+
+            // Generar tabla
+            resultsBody.innerHTML = '';
+            
+            let total = 0;
+            CLASSES.forEach((className, idx) => {
+                const count = counts[idx];
+                total += count;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${idx}</strong></td>
+                    <td>${className.toUpperCase()}</td>
+                    <td><span class="count-badge">${count}</span></td>
+                `;
+                resultsBody.appendChild(row);
+            });
+
+            // Fila de total
+            const totalRow = document.createElement('tr');
+            totalRow.className = 'total-row';
+            totalRow.innerHTML = `
+                <td colspan="2"><strong>TOTAL</strong></td>
+                <td><span class="count-badge">${total}</span></td>
+            `;
+            resultsBody.appendChild(totalRow);
+        }
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    status.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Inicialización
+        window.onload = async () => {
+            showStatus('📝 Cargando aplicación...', 'info');
+            await loadModel();
+        };
+    </script>
+</body>
+</html>

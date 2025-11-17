@@ -1,0 +1,10 @@
+# Dataset de objetos del salón
+# Auto-generado con bounding boxes automáticos
+
+path: /run/media/SoporteOATI/HDD/Maestria/Repositorios/BigData-CNN/inventario/dataset
+train: images/train
+val: images/val
+
+# Clases
+nc: 6
+names: ['cpu', 'mesa', 'mouse', 'pantalla', 'silla', 'teclado']
